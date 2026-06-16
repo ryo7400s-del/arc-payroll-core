@@ -1,0 +1,23 @@
+name: Auto Execute Payroll
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 6時間ごと（1日4回）UTC 0,6,12,18時
+  workflow_dispatch:
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm init -y && npm install viem @circle-fin/developer-controlled-wallets
+
+      - name: Run auto-execute
+        env:
+          CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
+          CIRCLE_ENTITY_SECRET: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          CIRCLE_WALLET_ID: ${{ secrets.CIRCLE_WALLET_ID }}
+        run: node auto-execute.mjs

@@ -1,0 +1,24 @@
+name: Weekly USDC Payment
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # 毎週月曜 0:00 UTC
+  workflow_dispatch:       # 手動実行も可能
+
+jobs:
+  payment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install viem
+
+      - name: Run x402 payment
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+        run: node x402-simple.mjs

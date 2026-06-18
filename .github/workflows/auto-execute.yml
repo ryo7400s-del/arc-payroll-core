@@ -14,9 +14,18 @@ jobs:
         with:
           node-version: '20'
       
-      # 修正: dotenv を追加しました
+      # 依存関係のインストール
       - run: npm init -y && npm install viem @circle-fin/developer-controlled-wallets dotenv --legacy-peer-deps
 
+      # 診断用ステップ（エラー切り分け用）
+      - name: Run diagnostic check
+        env:
+          CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
+          CIRCLE_ENTITY_SECRET: ${{ secrets.CIRCLE_ENTITY_SECRET }}
+          CIRCLE_WALLET_ID: ${{ secrets.CIRCLE_WALLET_ID }}
+        run: node check-wallet.mjs
+
+      # 本番実行ステップ
       - name: Run auto-execute
         env:
           CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}

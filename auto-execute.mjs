@@ -36,6 +36,14 @@ async function signAndSend(to, data) {
 }
 
 async function main() {
+  // --- 🕵️ ここから追加：環境変数の生存確認ログ ---
+  console.log("--- 🕵️ 環境変数の生存確認 ---");
+  console.log("🔑 API Key exists:", !!process.env.CIRCLE_API_KEY);
+  console.log("🔐 Entity Secret exists:", !!process.env.CIRCLE_ENTITY_SECRET);
+  console.log("👛 Wallet ID exists:", !!process.env.CIRCLE_WALLET_ID);
+  console.log("------------------------------");
+  // --- 🕵️ ここまで ---
+
   const companies = await publicClient.readContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
   });
@@ -63,19 +71,25 @@ async function main() {
       if (!ok) { console.log(`⏳ Schedule ${i} (${s.label}): ${reason}`); continue; }
 
       console.log(`🚀 Executing schedule ${i} (${s.label})...`);
-      const response = await circleClient.createContractExecutionTransaction({
-        walletId: WALLET_ID,
-        contractAddress: scheduler,
-        abiFunctionSignature: "executeSchedule(address,uint256)",
-        abiParameters: [owner, i.toString()],
-        feeLevel: "MEDIUM",
-      });
-      const txId = response.data?.id;
-      console.log(`✅ TX submitted: ${txId}`);
-      totalExecuted++;
+      
+      // try-catchで囲むことで、1つのスケジュールのエラーで全体が落ちるのを防ぎます
+      try {
+        const response = await circleClient.createContractExecutionTransaction({
+          walletId: WALLET_ID,
+          contractAddress: scheduler,
+          abiFunctionSignature: "executeSchedule(address,uint256)",
+          abiParameters: [owner, i.toString()],
+          feeLevel: "MEDIUM",
+        });
+        const txId = response.data?.id;
+        console.log(`✅ TX submitted: ${txId}`);
+        totalExecuted++;
+      } catch (error) {
+        console.error(`❌ Circle SDK Error on schedule ${i}:`, error.message);
+      }
     }
   }
   console.log(`\n✨ Executed ${totalExecuted}/${totalSchedules} schedules across ${companies.length} companies`);
 }
 
-main().catch(e => { console.error("❌", e.message); process.exit(1); });
+main().catch(e => { console.error("❌ Main Error:", e.message); process.exit(1); });

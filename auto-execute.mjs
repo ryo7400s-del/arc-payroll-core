@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createPublicClient, http } from "viem";
 import crypto from "crypto";
 
+// 1. 設定
 const arcTestnet = {
   id: 5042002, name: "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
@@ -20,11 +21,11 @@ const ABI = [
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
 async function main() {
-  console.log("--- 🚀 API直接通信モード (Contract Execution) ---");
-  
-  // 環境変数チェック
-  if (!process.env.CIRCLE_API_KEY || !process.env.CIRCLE_ENTITY_SECRET || !process.env.CIRCLE_WALLET_ID) {
-    console.error("❌ ERROR: Required environment variables are missing!");
+  console.log("--- 🚀 API直接通信モード (Debug Enabled) ---");
+
+  // 環境変数の存在確認
+  if (!process.env.CIRCLE_API_KEY || !process.env.CIRCLE_WALLET_ID || !process.env.CIRCLE_ENTITY_SECRET) {
+    console.error("❌ ERROR: Required environment variables (API_KEY, WALLET_ID, ENTITY_SECRET) are missing!");
     process.exit(1);
   }
 
@@ -49,7 +50,8 @@ async function main() {
       if (!ok) continue;
 
       console.log(`🚀 Executing schedule ${i} (${s.label})...`);
-      
+
+      // 💡 実行用データ作成
       const payload = {
         idempotencyKey: crypto.randomUUID(),
         walletId: process.env.CIRCLE_WALLET_ID,
@@ -61,8 +63,11 @@ async function main() {
 
       try {
         const url = "https://api-sandbox.circle.com/v1/w3s/transactions/contractExecution";
-        console.log(`📡 Sending request to: ${url}`);
         
+        // デバッグログ
+        console.log(`📡 Request URL: ${url}`);
+        console.log(`📡 Payload: ${JSON.stringify(payload)}`);
+
         const response = await fetch(url, {
           method: "POST",
           headers: {
@@ -76,9 +81,9 @@ async function main() {
         const result = await response.json();
         
         if (!response.ok) {
-          console.error(`❌ API Failed with Status: ${response.status}`);
-          console.error(`❌ Response Body:`, JSON.stringify(result, null, 2));
-          throw new Error("API call failed");
+          console.error(`❌ API Failed (Status ${response.status})`);
+          console.error(`❌ Full Response:`, JSON.stringify(result, null, 2));
+          throw new Error(`API Status ${response.status}`);
         }
 
         console.log(`✅ TX submitted: ${result.data.id}`);
@@ -87,6 +92,7 @@ async function main() {
       }
     }
   }
+  console.log("\n✨ Process completed.");
 }
 
 main().catch(e => { console.error("❌ Fatal Error:", e.message); process.exit(1); });

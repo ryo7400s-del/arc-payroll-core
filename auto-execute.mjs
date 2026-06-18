@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { createPublicClient, http } from "viem";
 import crypto from "crypto";
 
-// 1. 設定
 const arcTestnet = {
   id: 5042002, name: "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
@@ -21,7 +20,13 @@ const ABI = [
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
 async function main() {
-  console.log("--- 🚀 API直接通信モード (Standard Transactions) ---");
+  console.log("--- 🚀 API直接通信モード (Contract Execution) ---");
+  
+  // 環境変数チェック
+  if (!process.env.CIRCLE_API_KEY || !process.env.CIRCLE_ENTITY_SECRET || !process.env.CIRCLE_WALLET_ID) {
+    console.error("❌ ERROR: Required environment variables are missing!");
+    process.exit(1);
+  }
 
   const companies = await publicClient.readContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
@@ -30,46 +35,50 @@ async function main() {
 
   for (const company of companies) {
     const { owner, scheduler } = company;
-    console.log(`\n🔍 Company: ${owner} → ${scheduler}`);
-
     const schedules = await publicClient.readContract({
       address: scheduler, abi: ABI, functionName: "getSchedules", args: [owner],
     });
 
     for (let i = 0; i < schedules.length; i++) {
       const s = schedules[i];
-      if (!s.active) { console.log(`⏸ Schedule ${i} (${s.label}) is paused`); continue; }
+      if (!s.active) continue;
 
-      const [ok, reason] = await publicClient.readContract({
+      const [ok] = await publicClient.readContract({
         address: scheduler, abi: ABI, functionName: "canExecute", args: [owner, BigInt(i)],
       });
-      if (!ok) { console.log(`⏳ Schedule ${i} (${s.label}): ${reason}`); continue; }
+      if (!ok) continue;
 
       console.log(`🚀 Executing schedule ${i} (${s.label})...`);
+      
+      const payload = {
+        idempotencyKey: crypto.randomUUID(),
+        walletId: process.env.CIRCLE_WALLET_ID,
+        contractAddress: scheduler,
+        abiFunctionSignature: "executeSchedule(address,uint256)",
+        abiParameters: [owner, i.toString()],
+        feeLevel: "MEDIUM"
+      };
 
       try {
-        // 💡 エンドポイントを /v1/w3s/transactions に変更し、コントラクト実行パラメータを渡す
-        const response = await fetch("https://api-sandbox.circle.com/v1/w3s/transactions", {
+        const url = "https://api-sandbox.circle.com/v1/w3s/transactions/contractExecution";
+        console.log(`📡 Sending request to: ${url}`);
+        
+        const response = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.CIRCLE_API_KEY}`
+            "Authorization": `Bearer ${process.env.CIRCLE_API_KEY}`,
+            "X-Entity-Secret": process.env.CIRCLE_ENTITY_SECRET
           },
-          body: JSON.stringify({
-            idempotencyKey: crypto.randomUUID(),
-            walletId: process.env.CIRCLE_WALLET_ID,
-            contractAddress: scheduler,
-            abiFunctionSignature: "executeSchedule(address,uint256)",
-            abiParameters: [owner, i.toString()],
-            feeLevel: "MEDIUM"
-          })
+          body: JSON.stringify(payload)
         });
 
         const result = await response.json();
         
-        // エラーハンドリング
         if (!response.ok) {
-          throw new Error(result.message || JSON.stringify(result));
+          console.error(`❌ API Failed with Status: ${response.status}`);
+          console.error(`❌ Response Body:`, JSON.stringify(result, null, 2));
+          throw new Error("API call failed");
         }
 
         console.log(`✅ TX submitted: ${result.data.id}`);

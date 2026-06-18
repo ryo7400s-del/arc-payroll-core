@@ -1,11 +1,37 @@
-import 'dotenv/config';
-import { createPublicClient, http, encodeFunctionData, parseAbiItem } from "viem"; // 👈 encodeFunctionData を追加
+import 'dotenv/config'; // 環境変数の読み込み
+import { createPublicClient, http, encodeFunctionData, parseAbiItem } from "viem";
 import { CircleDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
 
-// ... (中略：arcTestnetやREGISTRY_ABI, ABIの設定などはそのまま)
+const arcTestnet = {
+  id: 5042002, name: "Arc Testnet",
+  nativeCurrency: { name:"USDC", symbol:"USDC", decimals:18 },
+  rpcUrls: { default: { http: ["https://rpc.testnet.arc.network"] } }
+};
+
+const REGISTRY = "0xc01c0113e353c6fc1be7d32a80e9688e1256b81f";
+const REGISTRY_ABI = [
+  { type:"function", name:"getAll", inputs:[], outputs:[{components:[{name:"owner",type:"address"},{name:"scheduler",type:"address"},{name:"name",type:"string"},{name:"registeredAt",type:"uint256"}],name:"",type:"tuple[]"}] },
+];
+const ABI = [
+  { type:"function", name:"getSchedules", inputs:[{name:"owner",type:"address"}], outputs:[{components:[{name:"id",type:"uint96"},{name:"recipient",type:"address"},{name:"amount",type:"uint256"},{name:"interval",type:"uint256"},{name:"nextExecution",type:"uint256"},{name:"active",type:"bool"},{name:"label",type:"string"}],name:"",type:"tuple[]"}] },
+  { type:"function", name:"canExecute", inputs:[{name:"owner",type:"address"},{name:"index",type:"uint256"}], outputs:[{name:"ok",type:"bool"},{name:"reason",type:"string"}] },
+  { type:"function", name:"executeSchedule", inputs:[{name:"owner",type:"address"},{name:"index",type:"uint256"}], outputs:[{name:"txRef",type:"bytes32"}] },
+];
+
+const circleClient = new CircleDeveloperControlledWalletsClient({
+  apiKey: process.env.CIRCLE_API_KEY,
+  entitySecret: process.env.CIRCLE_ENTITY_SECRET,
+});
+
+const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
 async function main() {
-  // ... (中略：生存確認ログはそのまま)
+  // 環境変数の生存確認ログ
+  console.log("--- 🕵️ 環境変数の生存確認 ---");
+  console.log("🔑 API Key exists:", !!process.env.CIRCLE_API_KEY);
+  console.log("🔐 Entity Secret exists:", !!process.env.CIRCLE_ENTITY_SECRET);
+  console.log("👛 Wallet ID exists:", !!process.env.CIRCLE_WALLET_ID);
+  console.log("------------------------------");
 
   const companies = await publicClient.readContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
@@ -45,7 +71,7 @@ async function main() {
         const response = await circleClient.createTransaction({
           walletId: process.env.CIRCLE_WALLET_ID,
           contractAddress: scheduler,
-          data: data, // 👈 データを直接渡す
+          data: data, // 👈 エンコード済みの16進数データを直接渡す
           feeLevel: "MEDIUM",
         });
 

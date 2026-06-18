@@ -2,7 +2,7 @@ name: Auto Execute Payroll
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 6時間ごと（1日4回）UTC 0,6,12,18時
+    - cron: '0 */6 * * *'  # 6時間ごと
   workflow_dispatch:
 
 jobs:
@@ -13,7 +13,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm init -y && npm install viem @circle-fin/developer-controlled-wallets --legacy-peer-deps
+      
+      # 修正: dotenv を追加しました
+      - run: npm init -y && npm install viem @circle-fin/developer-controlled-wallets dotenv --legacy-peer-deps
 
       - name: Run auto-execute
         env:

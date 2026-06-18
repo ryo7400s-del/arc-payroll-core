@@ -2,7 +2,7 @@ name: Auto Execute Payroll
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 6時間ごと
+    - cron: '0 */6 * * *'  # 6時間ごと（1日4回）UTC 0,6,12,18時
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
+<<<<<<< HEAD
           node-version: '20'
       
       # 依存関係のインストール
@@ -26,9 +27,11 @@ jobs:
         run: node check-wallet.mjs
 
       # 本番実行ステップ
+=======
+          node-version: '22'
+      - run: npm init -y && npm install viem
+>>>>>>> f876e8a (fix: revert to PRIVATE_KEY for auto-execute)
       - name: Run auto-execute
         env:
-          CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
-          CIRCLE_ENTITY_SECRET: ${{ secrets.CIRCLE_ENTITY_SECRET }}
-          CIRCLE_WALLET_ID: ${{ secrets.CIRCLE_WALLET_ID }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
         run: node auto-execute.mjs

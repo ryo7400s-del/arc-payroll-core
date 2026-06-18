@@ -1,6 +1,6 @@
-import 'dotenv/config'; // 環境変数の読み込み
-import { createPublicClient, http, encodeFunctionData, parseAbiItem } from "viem";
-import { CircleDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
+import 'dotenv/config';
+import { createPublicClient, http } from "viem";
+import crypto from "crypto"; // ランダムなID生成用
 
 const arcTestnet = {
   id: 5042002, name: "Arc Testnet",
@@ -15,19 +15,12 @@ const REGISTRY_ABI = [
 const ABI = [
   { type:"function", name:"getSchedules", inputs:[{name:"owner",type:"address"}], outputs:[{components:[{name:"id",type:"uint96"},{name:"recipient",type:"address"},{name:"amount",type:"uint256"},{name:"interval",type:"uint256"},{name:"nextExecution",type:"uint256"},{name:"active",type:"bool"},{name:"label",type:"string"}],name:"",type:"tuple[]"}] },
   { type:"function", name:"canExecute", inputs:[{name:"owner",type:"address"},{name:"index",type:"uint256"}], outputs:[{name:"ok",type:"bool"},{name:"reason",type:"string"}] },
-  { type:"function", name:"executeSchedule", inputs:[{name:"owner",type:"address"},{name:"index",type:"uint256"}], outputs:[{name:"txRef",type:"bytes32"}] },
 ];
-
-const circleClient = new CircleDeveloperControlledWalletsClient({
-  apiKey: process.env.CIRCLE_API_KEY,
-  entitySecret: process.env.CIRCLE_ENTITY_SECRET,
-});
 
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
 async function main() {
-  // 環境変数の生存確認ログ
-  console.log("--- 🕵️ 環境変数の生存確認 ---");
+  console.log("--- 🕵️ 直接API通信モードで実行 ---");
   console.log("🔑 API Key exists:", !!process.env.CIRCLE_API_KEY);
   console.log("🔐 Entity Secret exists:", !!process.env.CIRCLE_ENTITY_SECRET);
   console.log("👛 Wallet ID exists:", !!process.env.CIRCLE_WALLET_ID);
@@ -36,9 +29,7 @@ async function main() {
   const companies = await publicClient.readContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
   });
-  console.log(`🏢 Found ${companies.length} company(s) in Registry`);
-
-  let totalExecuted = 0, totalSchedules = 0;
+  console.log(`🏢 Found ${companies.length} company(s)`);
 
   for (const company of companies) {
     const { owner, scheduler } = company;
@@ -48,7 +39,6 @@ async function main() {
       address: scheduler, abi: ABI, functionName: "getSchedules", args: [owner],
     });
     console.log(`📋 Found ${schedules.length} schedule(s)`);
-    totalSchedules += schedules.length;
 
     for (let i = 0; i < schedules.length; i++) {
       const s = schedules[i];
@@ -62,28 +52,35 @@ async function main() {
       console.log(`🚀 Executing schedule ${i} (${s.label})...`);
       
       try {
-        // 💡 修正ポイント: SDKにABIを解析させず、viemで手動エンコードする
-        const data = encodeFunctionData({
-          abi: [parseAbiItem("function executeSchedule(address,uint256)")],
-          args: [owner, BigInt(i)]
+        // SDKの createContractExecutionTransaction ではなく、fetchで直接エンドポイントを叩く
+        const response = await fetch("https://api-sandbox.circle.com/v1/w3s/transactions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.CIRCLE_API_KEY}`,
+            "X-Entity-Secret": process.env.CIRCLE_ENTITY_SECRET // エンティティシークレットが必要な場合
+          },
+          body: JSON.stringify({
+            idempotencyKey: crypto.randomUUID(),
+            walletId: process.env.CIRCLE_WALLET_ID,
+            contractAddress: scheduler,
+            abiFunctionSignature: "executeSchedule(address,uint256)",
+            abiParameters: [owner, i.toString()],
+            feeLevel: "MEDIUM"
+          })
         });
 
-        const response = await circleClient.createTransaction({
-          walletId: process.env.CIRCLE_WALLET_ID,
-          contractAddress: scheduler,
-          data: data, // 👈 エンコード済みの16進数データを直接渡す
-          feeLevel: "MEDIUM",
-        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(JSON.stringify(result));
+        }
 
-        const txId = response.data?.id;
-        console.log(`✅ TX submitted: ${txId}`);
-        totalExecuted++;
+        console.log(`✅ TX submitted: ${result.data.id}`);
       } catch (error) {
-        console.error(`❌ Execution Error on schedule ${i}:`, error.message);
+        console.error(`❌ API Error on schedule ${i}:`, error.message);
       }
     }
   }
-  console.log(`\n✨ Executed ${totalExecuted}/${totalSchedules} schedules across ${companies.length} companies`);
 }
 
-main().catch(e => { console.error("❌ Main Error:", e.message); process.exit(1); });
+main().catch(e => { console.error("❌ Fatal Error:", e.message); process.exit(1); });

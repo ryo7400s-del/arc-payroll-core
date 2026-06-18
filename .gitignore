@@ -7,7 +7,10 @@ public_key.pem
 raw_secret.txt
 *.pem
 *.txt
+<<<<<<< HEAD
 public_key.pem
 raw_secret.txt
 *.pem
 *.txt
+=======
+>>>>>>> bb624de (fix: remove sensitive files from tracking)

@@ -1,4 +1,4 @@
-import { createPublicClient, http, createWalletClient } from "viem";
+import { createPublicClient, http } from "viem";
 import { CircleDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
 
 const arcTestnet = {
@@ -25,24 +25,13 @@ const circleClient = new CircleDeveloperControlledWalletsClient({
 const WALLET_ID = process.env.CIRCLE_WALLET_ID;
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
-async function signAndSend(to, data) {
-  const response = await circleClient.createTransaction({
-    walletId: WALLET_ID,
-    contractAddress: to,
-    abiFunctionSignature: data,
-    feeLevel: "MEDIUM",
-  });
-  return response.data?.transaction?.txHash;
-}
-
 async function main() {
-  // --- 🕵️ ここから追加：環境変数の生存確認ログ ---
+  // 環境変数の確認
   console.log("--- 🕵️ 環境変数の生存確認 ---");
   console.log("🔑 API Key exists:", !!process.env.CIRCLE_API_KEY);
   console.log("🔐 Entity Secret exists:", !!process.env.CIRCLE_ENTITY_SECRET);
   console.log("👛 Wallet ID exists:", !!process.env.CIRCLE_WALLET_ID);
   console.log("------------------------------");
-  // --- 🕵️ ここまで ---
 
   const companies = await publicClient.readContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
@@ -72,20 +61,23 @@ async function main() {
 
       console.log(`🚀 Executing schedule ${i} (${s.label})...`);
       
-      // try-catchで囲むことで、1つのスケジュールのエラーで全体が落ちるのを防ぎます
       try {
+        // ABI引数の形式を厳密に配列として渡します
+        // Circle SDKは数値型が文字列で渡されることを好む傾向があります
         const response = await circleClient.createContractExecutionTransaction({
           walletId: WALLET_ID,
           contractAddress: scheduler,
           abiFunctionSignature: "executeSchedule(address,uint256)",
-          abiParameters: [owner, i.toString()],
+          abiParameters: [owner, i.toString()], 
           feeLevel: "MEDIUM",
         });
+
         const txId = response.data?.id;
         console.log(`✅ TX submitted: ${txId}`);
         totalExecuted++;
       } catch (error) {
-        console.error(`❌ Circle SDK Error on schedule ${i}:`, error.message);
+        // SDK内部エラーの詳細を表示
+        console.error(`❌ Circle SDK Error on schedule ${i}: ${error.message}`);
       }
     }
   }

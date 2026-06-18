@@ -3,3 +3,7 @@ node_modules/
 .env
 node_modules/
 *.log
+public_key.pem
+raw_secret.txt
+*.pem
+*.txt

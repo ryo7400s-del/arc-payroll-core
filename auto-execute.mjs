@@ -21,6 +21,23 @@ const account = privateKeyToAccount(process.env.PRIVATE_KEY);
 const walletClient = createWalletClient({ account, chain: arcTestnet, transport: http() });
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
+const RECORD_URL = "https://arc-payroll-ui.vercel.app/api/record-execution";
+const RECORD_SECRET = process.env.RECORD_SECRET;
+
+async function recordExecution(owner, recipient, amount, txHash, scheduler, label) {
+  if (!RECORD_SECRET) { console.warn("⚠️ RECORD_SECRET not set, skipping history record"); return; }
+  try {
+    const res = await fetch(RECORD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: RECORD_SECRET, owner, recipient, amount: amount.toString(), txHash, scheduler, label }),
+    });
+    if (!res.ok) console.warn("⚠️ Failed to record history:", await res.text());
+  } catch (e) {
+    console.warn("⚠️ Failed to record history:", e.message);
+  }
+}
+
 async function main() {
   const companies = await publicClient.readContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
@@ -56,6 +73,9 @@ async function main() {
       await publicClient.waitForTransactionReceipt({ hash });
       console.log(`✅ Done! TX: ${hash}`);
       console.log(`🔍 https://testnet.arcscan.app/tx/${hash}`);
+
+      await recordExecution(owner, s.recipient, s.amount, hash, scheduler, s.label);
+
       totalExecuted++;
     }
   }

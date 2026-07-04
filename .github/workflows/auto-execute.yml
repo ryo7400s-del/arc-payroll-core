@@ -17,4 +17,5 @@ jobs:
       - name: Run auto-execute
         env:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
         run: node auto-execute.mjs

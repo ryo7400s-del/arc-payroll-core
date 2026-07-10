@@ -19,6 +19,7 @@ Submitted for the Circle Developer Bounty — Ignyte Challenge.
   - `PaymentScheduler.sol` (example company deployment): `0x91b1F3B731cC7B6d8878e7D1AFC90f0dC7441815`
 - **Team / submitter:** ryo7400s-del
 - **Track:** Stablecoin FX (USDC ↔ EURC) + Wallets
+- - **Circle product feedback:** [CIRCLE_FEEDBACK.md](./CIRCLE_FEEDBACK.md)
 
 ---
 

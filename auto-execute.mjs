@@ -24,6 +24,53 @@ const publicClient = createPublicClient({ chain: arcTestnet, transport: http() }
 const RECORD_URL = "https://arc-payroll-ui.vercel.app/api/record-execution";
 const RECORD_SECRET = process.env.RECORD_SECRET;
 
+// --- レート制限対策 ---------------------------------------------------
+// パブリックRPC (https://rpc.testnet.arc.network) は単位時間あたりの
+// リクエスト数に上限があり、10社分をノーウェイトでループすると
+// "request limit reached" で失敗する。各呼び出しの間に固定の待機を挟み、
+// 429/レート制限エラーが出た場合は指数バックオフでリトライする。
+const RPC_DELAY_MS = Number(process.env.RPC_DELAY_MS ?? 1200);
+const MAX_RETRIES = 5;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(err) {
+  const msg = (err?.message || err?.details || "").toString().toLowerCase();
+  return (
+    msg.includes("request limit reached") ||
+    msg.includes("rate limit") ||
+    msg.includes("429") ||
+    msg.includes("too many requests")
+  );
+}
+
+// publicClient.readContract をレート制限対応でラップする。
+// 呼び出しごとに RPC_DELAY_MS 待機し、レート制限エラーが出た場合は
+// 指数バックオフ（2s, 4s, 8s, 16s, 32s）でリトライする。
+async function readContractSafe(args) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await publicClient.readContract(args);
+      await sleep(RPC_DELAY_MS);
+      return result;
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < MAX_RETRIES) {
+        const backoff = 2000 * 2 ** attempt;
+        console.warn(
+          `⚠️ RPC rate limited (attempt ${attempt + 1}/${MAX_RETRIES}). Retrying in ${backoff}ms...`
+        );
+        await sleep(backoff);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("readContractSafe: exhausted retries");
+}
+// -----------------------------------------------------------------------
+
 async function recordExecution(owner, recipient, amount, txHash, scheduler, label) {
   if (!RECORD_SECRET) { console.warn("⚠️ RECORD_SECRET not set, skipping history record"); return; }
   try {
@@ -39,7 +86,7 @@ async function recordExecution(owner, recipient, amount, txHash, scheduler, labe
 }
 
 async function main() {
-  const companies = await publicClient.readContract({
+  const companies = await readContractSafe({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: "getAll",
   });
   console.log(`🏢 Found ${companies.length} company(s) in Registry`);
@@ -50,7 +97,7 @@ async function main() {
     const { owner, scheduler } = company;
     console.log(`\n🔍 Company: ${owner} → ${scheduler}`);
 
-    const schedules = await publicClient.readContract({
+    const schedules = await readContractSafe({
       address: scheduler, abi: ABI, functionName: "getSchedules", args: [owner],
     });
     console.log(`📋 Found ${schedules.length} schedule(s)`);
@@ -60,7 +107,7 @@ async function main() {
       const s = schedules[i];
       if (!s.active) { console.log(`⏸ Schedule ${i} (${s.label}) is paused`); continue; }
 
-      const [ok, reason] = await publicClient.readContract({
+      const [ok, reason] = await readContractSafe({
         address: scheduler, abi: ABI, functionName: "canExecute", args: [owner, BigInt(i)],
       });
       if (!ok) { console.log(`⏳ Schedule ${i} (${s.label}): ${reason}`); continue; }
@@ -70,6 +117,7 @@ async function main() {
         address: scheduler, abi: ABI,
         functionName: "executeSchedule", args: [owner, BigInt(i)],
       });
+      await sleep(RPC_DELAY_MS);
       await publicClient.waitForTransactionReceipt({ hash });
       console.log(`✅ Done! TX: ${hash}`);
       console.log(`🔍 https://testnet.arcscan.app/tx/${hash}`);
